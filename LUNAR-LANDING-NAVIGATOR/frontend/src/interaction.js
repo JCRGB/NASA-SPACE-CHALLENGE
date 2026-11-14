@@ -1,0 +1,1 @@
+// Mouse interaction and coordinates
