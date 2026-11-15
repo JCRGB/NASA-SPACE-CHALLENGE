@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lunar Landing Site Navigator</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="/style.css">
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+    }
+}
+</script>
+</head>
+
+<body>
+
+<!-- screen FX -->
+<div class="fx fx-grid"></div>
+<div class="fx fx-scan"></div>
+<div class="fx fx-vignette"></div>
+<div class="corner tl"></div><div class="corner tr"></div>
+<div class="corner bl"></div><div class="corner br"></div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+    <div class="left"><span class="sq"></span><span id="clock">----</span></div>
+    <div class="title">LUNAR COMMAND</div>
+    <div class="right"><span class="sq"></span>SECTOR 03 &nbsp; PHASE 07</div>
+</div>
+
+<!-- LEFT COMMAND PANEL -->
+<div class="mission-panel">
+
+    <div class="panel-heading">
+        <div class="system-indicator"></div>
+        <div>
+            <h2>MISSION CONTROL</h2>
+            <p>ORBITAL OBSERVATION SYSTEM</p>
+        </div>
+    </div>
+
+    <div class="panel-divider"></div>
+
+    <p class="section-label">ANALYSIS MODULES</p>
+
+    <div class="control-buttons">
+        <button class="control-btn active" data-mode="sunlight">
+            <span class="btn-icon">☀</span>
+            <span class="btn-text"><strong>SUNLIGHT</strong><small>ILLUMINATION DATA</small></span>
+            <span class="btn-arrow">›</span>
+        </button>
+
+        <button class="control-btn" data-mode="terrain">
+            <span class="btn-icon">⌁</span>
+            <span class="btn-text"><strong>TERRAIN</strong><small>ELEVATION &amp; SLOPE</small></span>
+            <span class="btn-arrow">›</span>
+        </button>
+
+        <button class="control-btn" data-mode="solar">
+            <span class="btn-icon">ϟ</span>
+            <span class="btn-text"><strong>SOLAR ENERGY</strong><small>ENERGY POTENTIAL</small></span>
+            <span class="btn-arrow">›</span>
+        </button>
+
+        <button class="control-btn" data-mode="suitability">
+            <span class="btn-icon">◎</span>
+            <span class="btn-text"><strong>SUITABILITY</strong><small>LANDING SITE ANALYSIS</small></span>
+            <span class="btn-arrow">›</span>
+        </button>
+    </div>
+
+    <div class="panel-divider"></div>
+
+    <div class="module-info">
+        <p class="section-label">ACTIVE MODULE</p>
+        <h3 id="active-module">SUNLIGHT</h3>
+        <p id="module-description">Monitoring lunar illumination conditions.</p>
+
+        <div class="readout">
+            <div class="row"><span>SCAN PROGRESS</span><b id="r1">60%</b></div>
+            <div class="bar"><i id="b1"></i></div>
+            <div class="row"><span>SIGNAL LOCK</span><b id="r2">87%</b></div>
+            <div class="bar"><i id="b2" style="width:87%"></i></div>
+        </div>
+    </div>
+
+    <div class="status-line"><span class="status-dot"></span>SYSTEM ONLINE</div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div class="bottombar">
+    <span>DRAG <b>ROTATE</b></span>
+    <span>SCROLL <b>ZOOM</b></span>
+    <span>LINK <b>SECURE</b></span>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+
+<script>
+/* HUD clock + fake telemetry flicker (purely cosmetic) */
+const pad = n => String(n).padStart(2, '0');
+const r = (a, b, d = 0) => (a + Math.random() * (b - a)).toFixed(d);
+
+function tick() {
+    const d = new Date();
+    document.getElementById('clock').textContent =
+        `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}   ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function telemetry() {
+    const v = r(55, 95);
+    r1.textContent = v + '%';  b1.style.width = v + '%';
+    const s = r(80, 99);
+    r2.textContent = s + '%';  b2.style.width = s + '%';
+}
+tick(); telemetry();
+setInterval(tick, 1000);
+setInterval(telemetry, 1800);
+</script>
+
+</body>
+</html>
