@@ -52,7 +52,7 @@
     <p class="section-label">ANALYSIS MODULES</p>
 
     <div class="control-buttons">
-        <button class="control-btn active" data-mode="sunlight">
+        <button class="control-btn" data-mode="sunlight">
             <span class="btn-icon">☀</span>
             <span class="btn-text"><strong>SUNLIGHT</strong><small>ILLUMINATION DATA</small></span>
             <span class="btn-arrow">›</span>
@@ -70,7 +70,7 @@
             <span class="btn-arrow">›</span>
         </button>
 
-        <button class="control-btn" data-mode="suitability">
+        <button class="control-btn active" data-mode="suitability">
             <span class="btn-icon">◎</span>
             <span class="btn-text"><strong>SUITABILITY</strong><small>LANDING SITE ANALYSIS</small></span>
             <span class="btn-arrow">›</span>
@@ -81,15 +81,10 @@
 
     <div class="module-info">
         <p class="section-label">ACTIVE MODULE</p>
-        <h3 id="active-module">SUNLIGHT</h3>
-        <p id="module-description">Monitoring lunar illumination conditions.</p>
+        <h3 id="active-module">SUITABILITY</h3>
+        <p id="module-description">Evaluating potential lunar landing locations.</p>
 
-        <div class="readout">
-            <div class="row"><span>SCAN PROGRESS</span><b id="r1">60%</b></div>
-            <div class="bar"><i id="b1"></i></div>
-            <div class="row"><span>SIGNAL LOCK</span><b id="r2">87%</b></div>
-            <div class="bar"><i id="b2" style="width:87%"></i></div>
-        </div>
+        <div class="readout" id="mode-summary" aria-live="polite" aria-label="Summary statistics for the active heatmap mode"></div>
     </div>
 
     <div class="status-line"><span class="status-dot"></span>SYSTEM ONLINE</div>
@@ -102,27 +97,20 @@
     <span>LINK <b>SECURE</b></span>
 </div>
 
+<script type="module" src="/src/layers/heatmap.js"></script>
 <script type="module" src="/src/main.js"></script>
 
 <script>
-/* HUD clock + fake telemetry flicker (purely cosmetic) */
+/* HUD clock */
 const pad = n => String(n).padStart(2, '0');
-const r = (a, b, d = 0) => (a + Math.random() * (b - a)).toFixed(d);
 
 function tick() {
     const d = new Date();
     document.getElementById('clock').textContent =
         `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}   ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
-function telemetry() {
-    const v = r(55, 95);
-    r1.textContent = v + '%';  b1.style.width = v + '%';
-    const s = r(80, 99);
-    r2.textContent = s + '%';  b2.style.width = s + '%';
-}
-tick(); telemetry();
+tick();
 setInterval(tick, 1000);
-setInterval(telemetry, 1800);
 </script>
 
 </body>
