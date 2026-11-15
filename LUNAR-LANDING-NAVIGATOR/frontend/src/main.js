@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { initSun } from './sun.js';
 
 // ==========================================
 // 1. CREATE SCENE
@@ -218,7 +219,7 @@ loader.load(
         const SHOW_DEBUG_AXES = false;   // true = also show X/Y/Z axes
 
         // --- Calibration knobs (only touch if landmarks look wrong) ---
-        const FLIP_NORTH_SOUTH = false;  // true = swap which pole is north
+        const FLIP_NORTH_SOUTH = true;  // true = swap which pole is north
         const MAP_CENTER_LON   = 0;      // longitude at the centre of the texture
         const LONGITUDE_SIGN   = 1;      // -1 = east/west appear swapped
 
@@ -699,6 +700,17 @@ loader.load(
         if (SHOW_DEBUG_AXES) {
             pivot.add(new THREE.AxesHelper(maxDimension * 0.8));
         }
+
+        // Put the Sun where it really is (near the equator plane, so the poles
+        // sit on the day/night line) and add the day slider. This also shares
+        // the Moon's axes with heatmap.js, so it must run BEFORE scene.add(pivot):
+        // adding the pivot is what makes the heatmap attach itself.
+        initSun({
+            light: directionalLight,
+            lonA, lonB, northAxis,
+            lonSign: LONGITUDE_SIGN,
+            centerLon: MAP_CENTER_LON
+        });
 
         scene.add(pivot);
 

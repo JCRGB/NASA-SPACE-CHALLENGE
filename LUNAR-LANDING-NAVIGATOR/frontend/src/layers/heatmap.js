@@ -4,6 +4,12 @@ import suitabilityMode from './suitability.js';
 import sunlightMode from './sunlight.js';
 import terrainMode from './terrain.js';
 import solarMode from './solarEnergy.js';
+import { buildTerrain, computeLit } from './shadow.js';
+
+// Modes whose picture depends on where the Sun is. Terrain and Suitability
+// do not change with the day, so the slider leaves them alone.
+const LIVE_MODES = new Set(['sunlight', 'solar']);
+const MIN_REPAINT_MS = 70;
 
 const MODES = Object.fromEntries([suitabilityMode, sunlightMode, terrainMode, solarMode]
     .map(mode => [mode.key, mode]));
@@ -24,6 +30,9 @@ let texture;
 let canvasContext;
 let legend;
 let maxColatitudeRad;
+let datasetsCache;        // filled once every dataset has loaded
+let terrainModel;         // undefined = not built yet, null = no usable elevations
+let liveStats = null;     // set by paintDataset while live shadows are showing
 
 async function loadDataset(mode) {
     const response = await fetch(mode.dataUrl);
@@ -42,9 +51,22 @@ function loadDatasets() {
     if (!datasetsPromise) {
         datasetsPromise = Promise.all(Object.values(MODES).map(async mode =>
             [mode.key, await loadDataset(mode)]))
-            .then(entries => Object.fromEntries(entries));
+            .then(entries => (datasetsCache = Object.fromEntries(entries)));
     }
     return datasetsPromise;
+}
+
+// Returns the Sun state when live shadows should be drawn for this mode, else null.
+function liveSunFor(mode) {
+    const sun = window.lunarSun;
+    if (!sun?.live || !LIVE_MODES.has(mode.key) || !datasetsCache) return null;
+    if (terrainModel === undefined) {
+        terrainModel = buildTerrain(datasetsCache.terrain || []);
+        if (!terrainModel) {
+            console.warn('Live shadows need elevation_m in terrain.json; showing the long-term average instead.');
+        }
+    }
+    return terrainModel ? sun : null;
 }
 
 function hasUvMesh(object) {
@@ -92,7 +114,30 @@ function measureWorldSphere(moonRoot) {
     return sphere;
 }
 
+// Orientation from the axes main.js already worked out (including its
+// FLIP_NORTH_SOUTH and longitude settings). The cap's local +Y must point at
+// the SOUTH pole, local X at the canvas "cos(lon)" direction and local Z at
+// the "sin(lon)" direction, the same convention the landmarks use.
+function frameFromMain({ northAxis, lonA, lonB, lonSign = 1, centerLon = 0 }) {
+    const c = THREE.MathUtils.degToRad(centerLon);
+    const xAxis = new THREE.Vector3()
+        .addScaledVector(lonA, Math.cos(c))
+        .addScaledVector(lonB, -lonSign * Math.sin(c));
+    const zAxis = new THREE.Vector3()
+        .addScaledVector(lonA, Math.sin(c))
+        .addScaledVector(lonB, lonSign * Math.cos(c));
+    const south = northAxis.clone().negate();
+    if (new THREE.Vector3().crossVectors(xAxis, south).dot(zAxis) < 0) {
+        console.warn('Moon texture looks mirrored (negative handedness). Flip LONGITUDE_SIGN in main.js if the heatmap is mirrored.');
+        zAxis.negate();
+    }
+    return new THREE.Quaternion().setFromRotationMatrix(
+        new THREE.Matrix4().makeBasis(xAxis, south, zAxis));
+}
+
 function uvDirectionFrame(moonRoot, center) {
+    if (window.lunarFrame) return frameFromMain(window.lunarFrame);
+    console.warn('window.lunarFrame missing; guessing the heatmap orientation from the UV map.');
     moonRoot.updateWorldMatrix(true, true);
     const meshes = [];
     let minV = Infinity;
@@ -212,6 +257,13 @@ function coordinate(point) {
 }
 
 function summaryRows(mode, points) {
+    if (liveStats && LIVE_MODES.has(mode.key)) {
+        const lon = liveStats.sun.lon;
+        return [
+            ['Sun Position', `Day ${fixed(liveStats.sun.day)} · ${fixed(Math.abs(lon))}°${lon >= 0 ? 'E' : 'W'} · ${fixed(liveStats.sun.elevation)}° at pole`],
+            ['Sunlit Area', `${fixed(liveStats.litPercent)}% of surveyed region`],
+        ];
+    }
     const values = points.map(point => mode.value(point));
     const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
     const minimum = Math.min(...values);
@@ -290,8 +342,18 @@ function paintDataset(mode, points) {
     let observedMax = -Infinity;
     const maxSinColatitude = Math.sin(maxColatitudeRad);
 
-    for (const point of points) {
-        const value = mode.value(point);
+    // Live mode: work out which points the Sun reaches right now, then paint
+    // lit ground with the top colour of the gradient and shadow with the bottom.
+    const sun = liveSunFor(mode);
+    const lit = sun ? computeLit(terrainModel, points, sun.lon, sun.lat) : null;
+    const litRgb = lit ? cssRgb(colorAt(mode, mode.max)) : null;
+    const shadowRgb = lit ? cssRgb(colorAt(mode, mode.min)) : null;
+    let litCount = 0;
+
+    for (let index = 0; index < points.length; index++) {
+        const point = points[index];
+        const value = lit ? (lit[index] ? mode.max : mode.min) : mode.value(point);
+        if (lit && lit[index]) litCount++;
         observedMin = Math.min(observedMin, value);
         observedMax = Math.max(observedMax, value);
         const colatitudeRad = (90 - Math.abs(point.lat)) * Math.PI / 180;
@@ -300,9 +362,11 @@ function paintDataset(mode, points) {
             + (Math.sin(colatitudeRad) * Math.cos(lonRad) / maxSinColatitude) * (CANVAS_SIZE / 2);
         const py = CANVAS_SIZE / 2
             + (Math.sin(colatitudeRad) * Math.sin(lonRad) / maxSinColatitude) * (CANVAS_SIZE / 2);
-        const rgb = cssRgb(colorAt(mode, value));
+        const rgb = lit ? (lit[index] ? litRgb : shadowRgb) : cssRgb(colorAt(mode, value));
         drawSpot(px, py, rgb);
     }
+
+    liveStats = lit ? { sun: { ...sun }, litPercent: litCount / points.length * 100 } : null;
 
     const edgeFade = canvasContext.createRadialGradient(
         CANVAS_SIZE / 2, CANVAS_SIZE / 2, 0,
@@ -317,7 +381,9 @@ function paintDataset(mode, points) {
 
     texture.needsUpdate = true;
     updateLegend(mode, observedMin, observedMax, points.length);
-    console.info(`Heatmap ${mode.key}: painted ${points.length.toLocaleString()} JSON locations (${observedMin.toFixed(3)}–${observedMax.toFixed(3)} ${mode.unit}).`);
+    if (!lit) {
+        console.info(`Heatmap ${mode.key}: painted ${points.length.toLocaleString()} JSON locations (${observedMin.toFixed(3)}–${observedMax.toFixed(3)} ${mode.unit}).`);
+    }
 }
 
 function createCanvasTexture() {
@@ -344,12 +410,19 @@ function updateLegend(mode, observedMin, observedMax, pointCount) {
         legend.innerHTML = '<strong class="title"></strong><div class="gradient"></div><div class="labels"><span></span><span></span></div><small></small>';
         document.body.appendChild(legend);
     }
-    legend.querySelector('.title').textContent = mode.title;
-    legend.querySelector('.gradient').style.background = `linear-gradient(90deg, ${mode.stops.join(', ')})`;
     const labels = legend.querySelectorAll('.labels span');
-    labels[0].textContent = mode.labels[0];
-    labels[1].textContent = mode.labels[1];
-    legend.querySelector('small').textContent = `${mode.source} · ${pointCount.toLocaleString()} locations · observed ${observedMin.toFixed(2)}–${observedMax.toFixed(2)} ${mode.unit}`;
+    legend.querySelector('.gradient').style.background = `linear-gradient(90deg, ${mode.stops.join(', ')})`;
+    if (liveStats && LIVE_MODES.has(mode.key)) {
+        legend.querySelector('.title').textContent = `${mode.title} · LIVE SHADOWS`;
+        labels[0].textContent = 'SHADOW';
+        labels[1].textContent = 'SUNLIT';
+        legend.querySelector('small').textContent = `Day ${liveStats.sun.day.toFixed(1)} · ${liveStats.litPercent.toFixed(1)}% sunlit · shadows ray-traced from terrain elevation (${pointCount.toLocaleString()} locations)`;
+    } else {
+        legend.querySelector('.title').textContent = mode.title;
+        labels[0].textContent = mode.labels[0];
+        labels[1].textContent = mode.labels[1];
+        legend.querySelector('small').textContent = `${mode.source} · ${pointCount.toLocaleString()} locations · observed ${observedMin.toFixed(2)}–${observedMax.toFixed(2)} ${mode.unit}`;
+    }
     legend.hidden = false;
 }
 
@@ -415,17 +488,36 @@ THREE.Object3D.prototype.add = function addWithSurfaceHeatmap(...objects) {
     return result;
 };
 
+// Paint first, then summarise, so the summary can see the live-shadow numbers.
+async function refresh() {
+    const datasets = await loadDatasets();
+    if (overlay) paintDataset(MODES[activeMode], datasets[activeMode]);
+    renderSummary(MODES[activeMode], datasets[activeMode]);
+}
+
 document.querySelectorAll('.control-btn').forEach(button => {
     button.addEventListener('click', () => {
         activeMode = button.dataset.mode;
-        loadDatasets().then(datasets => renderSummary(MODES[activeMode], datasets[activeMode]))
-            .catch(error => console.error('Could not calculate lunar dataset summary:', error));
         if (!overlay) {
+            loadDatasets().then(datasets => renderSummary(MODES[activeMode], datasets[activeMode]))
+                .catch(error => console.error('Could not calculate lunar dataset summary:', error));
             if (sceneRef) scheduleAttach(sceneRef);
             return;
         }
-        loadDatasets().then(datasets => paintDataset(MODES[activeMode], datasets[activeMode]))
-            .catch(error => console.error('Could not switch lunar heatmap dataset:', error));
+        refresh().catch(error => console.error('Could not switch lunar heatmap dataset:', error));
     });
 });
 
+// The Sun moved (slider, play, or the AVERAGE button). Repaint at most every
+// MIN_REPAINT_MS so dragging or playing stays smooth; the latest position wins.
+let repaintTimer = null;
+let lastRepaint = 0;
+window.addEventListener('sun-change', () => {
+    if (!overlay || !LIVE_MODES.has(activeMode) || repaintTimer !== null) return;
+    const wait = Math.max(0, MIN_REPAINT_MS - (performance.now() - lastRepaint));
+    repaintTimer = setTimeout(() => {
+        repaintTimer = null;
+        lastRepaint = performance.now();
+        refresh().catch(error => console.error('Could not update live shadows:', error));
+    }, wait);
+});

@@ -1,4 +1,4 @@
-import dataUrl from '../../../data/processed/suitability.json?url';
+const dataUrl = '/data/processed/suitability.json';
 
 export default Object.freeze({
     key: 'suitability',

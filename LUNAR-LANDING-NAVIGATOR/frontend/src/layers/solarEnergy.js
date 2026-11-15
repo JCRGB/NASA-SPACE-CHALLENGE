@@ -1,4 +1,4 @@
-import dataUrl from '../../../data/processed/solar_energy.json?url';
+const dataUrl = '/data/processed/solar_energy.json';
 
 export default Object.freeze({
     key: 'solar',
@@ -7,8 +7,8 @@ export default Object.freeze({
     unit: 'kWh/m²/day',
     source: 'Derived from NASA illumination · 20% panel efficiency',
     min: 0,
-    max: 6.5328,
+    max: 3.5,
     stops: ['#123bba', '#04d6e8', '#ffd338', '#f13a30'],
-    labels: ['0', '6.53'],
+    labels: ['0', '3.5'],
     value: point => point.value,
 });
